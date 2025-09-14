@@ -164,6 +164,28 @@ namespace Components
 
 			Game::level->initializing = 1;
 			const auto* weaponName = params->get(1);
+
+			// just simply give the ammo to all wepaons and leave
+			if (!strcmp(weaponName, "ammo"))
+			{
+				for (std::size_t i = 0; i < std::extent_v<decltype(Game::playerState_s::weaponsEquipped)>; ++i)
+				{
+					const auto index = ent->client->ps.weaponsEquipped[i];
+					if (index)
+					{
+						const auto* def = Game::BG_GetWeaponDef(index);
+						if (!def)
+							continue;
+
+						// refill reserve ammo up to start ammo
+						Game::Add_Ammo(ent, index, 0, def->iStartAmmo, 1);
+					}
+				}
+
+				Game::level->initializing = 0;
+				return;
+			}
+
 			Logger::Debug("Giving weapon {} to entity {}", weaponName, ent->s.number);
 			const auto weaponIndex = Game::G_GetWeaponIndexForName(weaponName);
 
