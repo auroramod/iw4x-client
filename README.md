@@ -5,56 +5,20 @@
 
 <img src=".github/assets/readme/icon.png" align="right" width="100" height="100">
 
-IW4x is a community-driven project that aims to revitalize and enhance the [Call of Duty: Modern Warfare 2 (2009)](https://store.steampowered.com/app/10180/Call_of_Duty_Modern_Warfare_2_2009/) multiplayer experience by providing a stable platform with support for dedicated servers and modding.
+This fork of IW4x is maintained by Aurora to give better modding capatibilties and be unrestricted from the main repository. This fork is always pulling in upstream updates, meaning you can enjoy the new features added here with the latest features from IW4x!
 
-A [__Steam__](https://store.steampowered.com/app/10180/Call_of_Duty_Modern_Warfare_2_2009/) installation of Modern Warfare 2 is required to run IW4x, copies from the Microsoft Store are **not compatible**.
-
-IW4x is distributed through the [IW4x Launcher](https://github.com/iw4x/launcher).
+To learn more about IW4x itself, [check the original IW4x repository out.](https://github.com/iw4x/iw4x-client)
 
 ## Compiling from Source
 
-> [!IMPORTANT]
-> **Clone** the git repository instead of downloading the ZIP, as the latter will not work.
+To learn how to compile, [check out IW4x's Compiling from Source guide.](https://github.com/iw4x/iw4x-client?tab=readme-ov-file#compiling-from-source)
 
-1. Clone the repository - `git clone https://github.com/iw4x/iw4x-client.git`
-2. Run `generate.bat` to initialize and update submodules and generate the Visual Studio solution
-3. Open/build the generated solution file `build\iw4x.sln` with Visual Studio
+## New features with Aurora
 
-To use the `iw4x.dll`, you must have a valid Modern Warfare 2 installation with the [IW4x Rawfiles](https://github.com/iw4x/iw4x-rawfiles) installed.
-
-<details>
-<summary>Development Setup</summary>
-
-### Build to MW2 Directory
-
-1. Right-click the IW4x solution in Visual Studio
-2. Select Properties
-3. Set the output directory to your MW2 install path
-
-![](.github/assets/readme/output_directory.png)
-
-### Setup Debugger
-
-1. Right-click the IW4x solution in Visual Studio
-2. Select Properties
-3. Select Debugging
-4. Set the Command value to the path of your `iw4x.exe` inside your MW2 game files
-
-> Tip:
-> - Switch to Windowed mode in-game, as breakpoints will lock the window.
-> - Pressing `F5` will launch the game and attach the debugger.
-> - The default hotkey for stopping the debugger is `Shift+F5`.
-
-![](.github/assets/readme/debug_command.png)
-</details>
-
-## Premake arguments
-
-| Argument                    | Description                                    |
-|:----------------------------|:-----------------------------------------------|
-| `--copy-to=PATH`            | Optional, copy the DLL to a custom folder after build, define the path here if wanted. |
-| `--copy-pdb`                | Copy debug information for binaries as well to the path given via --copy-to. |
-| `--disable-binary-check`    | Do not perform integrity checks on the exe. |
+- Re-added `reloadmenus` command (it is technically unstable, but is made accessible to modders for convinence of menu modding)
+- Check if zone exists before running `loadzone`
+- Add `take` command
+- Add `give ammo` command, which fills up all weapons
 
 ## Command line arguments
 
