@@ -10,10 +10,15 @@ To learn more about IW4x itself, [check the original IW4x repository out.](https
 
 ## New features with Aurora
 
-- Re-added `reloadmenus` command (it is technically unstable, but is made accessible to modders for convinence of menu modding)
+- Re-added `reloadmenus` command *(technically unstable, but made accessible to modders for convenience of menu modding)*
 - Check if zone exists before running `loadzone`
-- Add `take` command
-- Add `give ammo` command, which fills up all weapons
+- Added `take` command
+- Added `give ammo` command, which fills up all weapons' ammo
+
+### Planned for the future
+- IMGUI for exploring asset pools, limits, etc.
+- vision editor
+- changing sv_cheats flags?
 
 ## Disclaimer
 
