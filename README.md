@@ -8,6 +8,8 @@ This fork of IW4x is maintained <i>by Aurora</i> to give better modding capatibi
 
 To learn more about IW4x itself, [check the original IW4x repository out.](https://github.com/iw4x/iw4x-client) <b>This includes compiling the Source, which they have a guide on.</b>
 
+To learn more about Aurora IW4x's fork or have any requests or questions, you can join [the Aurora discord here.](https://discord.gg/6pSNTjtTCG)
+
 ## New features with Aurora
 
 - Re-added `reloadmenus` command *(technically unstable, but made accessible to modders for convenience of menu modding)*
@@ -27,3 +29,4 @@ This software has been created purely for the purposes of
 academic research. It is not intended to be used to attack
 other systems. Project maintainers are not responsible or
 liable for misuse of the software. Use responsibly.
+
