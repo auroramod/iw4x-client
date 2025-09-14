@@ -24,6 +24,8 @@ namespace Components
 
 	Dvar::Var Menus::PrintMenuDebug;
 
+	bool is_quick_reload = false;
+
 	Game::UiContext* Menus::GameUiContexts[] = {
 		Game::uiContext,
 		Game::cgDC // Ingame context
@@ -718,7 +720,9 @@ namespace Components
 		{
 			const auto context = Menus::GameUiContexts[contextIndex];
 
-			for (size_t i = 0; i < ARRAYSIZE(context->menuStack); i++)
+			// for (size_t i = 0; i < ARRAYSIZE(context->menuStack); i++)
+			// uses openMenuCount now, which is probably wrong... a fix would be nice :D
+			for (size_t i = 0; i < context->openMenuCount; i++)
 			{
 				if (context->menuStack[i] &&
 					context->menuStack[i]->window.name == name)
@@ -1359,8 +1363,12 @@ namespace Components
 		}
 		else
 		{
-			__debugbreak();
+			//__debugbreak();
 			Logger::Print("Warning - menu leak? Expected allocator to be empty after reload, but it's not!\n");
+			if (is_quick_reload)
+			{
+				Logger::Print("- restartmenus IS EXPECTED to cause memory leaks and is only meant for testing menus.\n");
+			}
 		}
 #endif
 
@@ -1503,6 +1511,24 @@ namespace Components
 		Menus::SupportingData->uiStrings.strings = allocator->allocateArray<const char*>(stringListSize / sizeof(const char*));
 	}
 
+	// In your dreams
+	void Menus::FreeEverything()
+	{
+		for (auto i = MenuListsFromDisk.begin(); i != MenuListsFromDisk.end(); ++i)
+		{
+			FreeMenuListOnly(i->second);
+		}
+
+		MenuListsFromDisk.clear();
+
+		for (auto i = MenusFromDisk.begin(); i != MenusFromDisk.end(); ++i)
+		{
+			FreeMenuOnly(i->second);
+		}
+
+		MenusFromDisk.clear();
+	}
+
 	Menus::Menus()
 	{
 		menuParseKeywordHash = reinterpret_cast<Game::KeywordHashEntry<Game::menuDef_t, 128, 3523>**>(0x63AE928);
@@ -1550,23 +1576,42 @@ namespace Components
 		Utils::Hook::SetString(0x6FC790, "main_text");
 
 		Command::Add("openmenu", [](const Command::Params* params)
+		{
+			if (params->size() != 2)
 			{
-				if (params->size() != 2)
-				{
-					Logger::Print("USAGE: openmenu <menu name>\n");
-					return;
-				}
+				Logger::Print("USAGE: openmenu <menu name>\n");
+				return;
+			}
 
-				// Not quite sure if we want to do this if we're not ingame, but it's only needed for ingame menus.
-				if ((*Game::cl_ingame)->current.enabled)
-				{
-					Game::Key_SetCatcher(0, Game::KEYCATCH_UI);
-				}
+			// Not quite sure if we want to do this if we're not ingame, but it's only needed for ingame menus.
+			if ((*Game::cl_ingame)->current.enabled)
+			{
+				Game::Key_SetCatcher(0, Game::KEYCATCH_UI);
+			}
 
-				const char* menuName = params->get(1);
+			const char* menuName = params->get(1);
 
-				Game::Menus_OpenByName(Game::uiContext, menuName);
-			});
+			Game::Menus_OpenByName(Game::uiContext, menuName);
+		});
+
+		/*
+
+			this is a command that was original to IW4x and helped modders rapidly test menus,
+			which were already a pain to deal with. this re-adds the functionality, while keeping
+			in mind that this is NOT a proper solution and definitely causes memory leaks.
+			this is done because a vid_restart takes too long compared to the original behavior of reloadmenus.
+			this should ONLY BE USED for pure convenience. 
+
+		*/
+		Command::Add("reloadmenus", [](const Command::Params* params)
+		{
+			is_quick_reload = true;
+			ReloadDiskMenus();
+			is_quick_reload = false;
+
+			// Reopen main menu after
+			Game::Menus_OpenByName(Game::uiContext, "main_text");
+		});
 
 		// Define custom menus here
 		Add("ui_mp/changelog.menu");

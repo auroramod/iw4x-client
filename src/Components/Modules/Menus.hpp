@@ -66,6 +66,8 @@ namespace Components
 		static void FreeLocalSupportingDataContents();
 		static void InitializeSupportingData();
 
+		static void FreeEverything();
+
 		static void UnloadMenuFromDisk(const std::string & menuName);
 
 		static void ReloadDiskMenus();
