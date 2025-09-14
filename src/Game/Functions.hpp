@@ -12,6 +12,9 @@ namespace Game
 	typedef void(*AngleVectors_t)(float* angles, float* forward, float* right, float* up);
 	extern AngleVectors_t AngleVectors;
 
+	typedef void(*BG_TakePlayerWeapon_t)(playerState_s* ps, int weapon_idx);
+	extern BG_TakePlayerWeapon_t BG_TakePlayerWeapon;
+
 	typedef void(*Cbuf_AddServerText_f_t)();
 	extern Cbuf_AddServerText_f_t Cbuf_AddServerText_f;
 
@@ -101,6 +104,9 @@ namespace Game
 
 	typedef void(*Free_String_t)(const char* string);
 	extern Free_String_t Free_String;
+
+	typedef int(*G_GivePlayerWeapon_t)(playerState_s* ps, const int weapon, int dualWield, int startInAltMode, int usedBefore);
+	extern G_GivePlayerWeapon_t G_GivePlayerWeapon;
 
 	typedef void(*Svcmd_EntityList_f_t)();
 	extern Svcmd_EntityList_f_t Svcmd_EntityList_f;

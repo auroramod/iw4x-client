@@ -230,6 +230,43 @@ namespace Components
 			}
 		});
 
+		Add("take", [](Game::gentity_s* ent, const Command::ServerParams* params)
+		{
+			if (!CheatsOk(ent))
+				return;
+
+			if (params->size() < 2)
+			{
+				Logger::Print("usage: take <weapon> | all\n");
+				return;
+			}
+
+			const auto& weapon = params->get(1);
+
+			if (!strcmp(weapon, "all"))
+			{
+				for (auto weapon_index = 1; weapon_index < Game::BG_GetNumWeapons(); ++weapon_index)
+				{
+					Game::BG_TakePlayerWeapon(&ent->client->ps, weapon_index);
+				}
+			}
+			else
+			{
+				const auto weapon_index = Game::G_GetWeaponIndexForName(weapon);
+
+				if (weapon_index <= 0 || weapon_index >= Game::BG_GetNumWeapons())
+				{
+					Logger::Print("Invalid weapon \"%s\"\n", weapon);
+					return;
+				}
+
+				Game::BG_TakePlayerWeapon(&ent->client->ps, weapon_index);
+
+				// switch to index 0 weapon (inlined G_SelectWeaponIndex)
+				Game::SV_GameSendServerCommand(ent->s.number, Game::SV_CMD_RELIABLE, Utils::String::VA("%c %i", 97, 0));
+			}
+		});
+
 		Add("kill", []([[maybe_unused]] Game::gentity_s* ent, [[maybe_unused]] const Command::ServerParams* params)
 		{
 			assert(ent->client);

@@ -8,6 +8,8 @@ namespace Game
 
 	AngleVectors_t AngleVectors = AngleVectors_t(0x4691A0);
 
+	BG_TakePlayerWeapon_t BG_TakePlayerWeapon = BG_TakePlayerWeapon_t(0x43AC60);
+
 	Cbuf_AddServerText_f_t Cbuf_AddServerText_f = Cbuf_AddServerText_f_t(0x4BB9B0);
 	Cbuf_AddText_t Cbuf_AddText = Cbuf_AddText_t(0x404B20);
 	Cbuf_InsertText_t Cbuf_InsertText = Cbuf_InsertText_t(0x4940B0);
@@ -49,6 +51,8 @@ namespace Game
 
 	FreeMemory_t FreeMemory = FreeMemory_t(0x4D6640);
 	Free_String_t Free_String = Free_String_t(0x470E80);
+
+	G_GivePlayerWeapon_t G_GivePlayerWeapon = G_GivePlayerWeapon_t(0x4B38B0);
 
 	Svcmd_EntityList_f_t Svcmd_EntityList_f = Svcmd_EntityList_f_t(0x4B6A70);
 
