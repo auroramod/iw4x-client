@@ -6,7 +6,7 @@
 
 This fork of IW4x is maintained <i>by Aurora</i> to give better modding capatibilties to IW4 and be unrestricted from the main repository. This fork is always pulling in upstream updates, meaning you can enjoy the new features added here with the latest features from IW4x!
 
-To learn more about IW4x itself, [check the original IW4x repository out.](https://github.com/iw4x/iw4x-client) <b>This includes compiling the Source, which they have a guide on.<>
+To learn more about IW4x itself, [check the original IW4x repository out.](https://github.com/iw4x/iw4x-client) <b>This includes compiling the Source, which they have a guide on.</b>
 
 ## New features with Aurora
 
