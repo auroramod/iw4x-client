@@ -77,5 +77,13 @@ namespace Components
 
 		static const std::vector<std::string>& GetExceptions();
 		static bool CL_ShouldSendNotify_Hk(const char* cmd);
+
+		static void enum_assets_callback(Game::XAssetHeader header, void* data);
+
+		struct AssetEnumFilter
+		{
+			Game::XAssetType type;
+			std::string filter;
+		};
 	};
 }

@@ -14,6 +14,7 @@ To learn more about IW4x itself, [check the original IW4x repository out.](https
 - Check if zone exists before running `loadzone`
 - Added `take` command
 - Added `give ammo` command, which fills up all weapons' ammo
+- Added `listassetpool` command
 
 ### Planned for the future
 - IMGUI for exploring asset pools, limits, etc.

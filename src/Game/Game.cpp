@@ -43,4 +43,6 @@ namespace Game
 	{
 		CL_AddDebugStar(point, color, 20, 1);
 	}
+
+	const char** g_assetNames = reinterpret_cast<const char**>(0x799278);
 }

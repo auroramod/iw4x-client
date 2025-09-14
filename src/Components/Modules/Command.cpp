@@ -221,9 +221,76 @@ namespace Components
 		return true;
 	}
 
+	static bool stristr(const char* haystack, const std::string& needle)
+	{
+		if (needle.empty()) return true;
+		if (!haystack) return false;
+
+		auto hlen = std::strlen(haystack);
+		auto nlen = needle.size();
+
+		for (size_t i = 0; i + nlen <= hlen; ++i)
+		{
+			if (_strnicmp(&haystack[i], needle.c_str(), nlen) == 0)
+				return true;
+		}
+		return false;
+	}
+
+	void Command::enum_assets_callback(Game::XAssetHeader header, void* data)
+	{
+		auto* filterData = reinterpret_cast<AssetEnumFilter*>(data);
+		auto type = filterData->type;
+
+		Game::XAsset asset{ type, header };
+		const char* name = Game::DB_GetXAssetName(&asset);
+		if (!name) return;
+
+		if (!filterData->filter.empty() && !stristr(name, filterData->filter))
+			return;
+
+		Game::Com_Printf(0, "- %s\n", name);
+	}
+
 	Command::Command()
 	{
 		// Protect players from invasive servers
 		Utils::Hook(0x434BD4, CL_ShouldSendNotify_Hk, HOOK_CALL).install()->quick();  // CL_CheckNotify
+
+		Add("listassetpool", [](const Command::Params* params)
+		{
+			if (params->size() < 2)
+			{
+				Logger::Print("listassetpool <poolnumber> [filter]: list all the assets in the specified pool\n");
+
+				for (auto i = 0; i < Game::XAssetType::ASSET_TYPE_COUNT; i++)
+				{
+					Logger::Print("{}: {}\n", i, Game::g_assetNames[i]);
+				}
+
+				return;
+			}
+
+			const auto type = static_cast<Game::XAssetType>(atoi(params->get(1)));
+
+			if (type < 0 || type >= Game::XAssetType::ASSET_TYPE_COUNT)
+			{
+				Logger::Print("Invalid pool passed must be between [{}, {}]\n", 0, Game::XAssetType::ASSET_TYPE_COUNT - 1);
+				return;
+			}
+
+			Logger::Print("Listing assets in pool {}\n", Game::g_assetNames[type]);
+
+			const std::string filter = params->get(2);
+
+			AssetEnumFilter filterData{ type, filter };
+
+			using DB_EnumXAssets_t = void(Game::XAssetType,
+				void(*)(Game::XAssetHeader, void*),
+				void*, bool);
+			auto DB_EnumXAssets = Utils::Hook::Call<DB_EnumXAssets_t>(0x4B7720);
+
+			DB_EnumXAssets(type, enum_assets_callback, &filterData, true);
+		});
 	}
 }
