@@ -437,6 +437,9 @@ namespace Game
 	typedef int(*SEH_GetCurrentLanguage_t)();
 	extern SEH_GetCurrentLanguage_t SEH_GetCurrentLanguage;
 
+	typedef char* (*SEH_GetLanguageName_t)(int language);
+	extern SEH_GetLanguageName_t SEH_GetLanguageName;
+
 	typedef void(*SND_Init_t)(int a1, int a2, int a3);
 	extern SND_Init_t SND_Init;
 

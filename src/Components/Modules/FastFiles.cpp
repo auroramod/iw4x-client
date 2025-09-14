@@ -672,11 +672,28 @@ namespace Components
 
 		Command::Add("loadzone", [](const Command::Params* params)
 		{
-			if (params->size() < 2) return;
+			if (params->size() < 2)
+			{
+				return;
+			}
 
-			Game::XZoneInfo info;
+			// TODO: i don't like this solution, but it works great for now
+			std::string relative_dir = (*Game::fs_homepath)->current.string;
+			relative_dir.append("\\zone\\");
+			relative_dir.append(Game::SEH_GetLanguageName( Game::SEH_GetCurrentLanguage() ));
+			relative_dir.append("\\");
+			relative_dir.append(params->get(1));
+			relative_dir.append(".ff");
+
+			if (!std::filesystem::exists(relative_dir))
+			{
+				Game::Com_PrintWarning(0, Utils::String::VA("Zone \"%s\" not found!\n", params->get(1)), 0);
+				return;
+			}
+
+			Game::XZoneInfo info{};
 			info.name = params->get(1);
-			info.allocFlags = 1;//0x01000000;
+			info.allocFlags = 1; //0x01000000;
 			info.freeFlags = 0;
 
 			Game::DB_LoadXAssets(&info, 1, true);
