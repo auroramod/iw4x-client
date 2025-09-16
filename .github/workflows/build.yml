@@ -50,3 +50,33 @@ jobs:
           path: |
             build/bin/Win32/${{matrix.configuration}}/iw4x.dll
             build/bin/Win32/${{matrix.configuration}}/iw4x.pdb
+
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Zip binaries
+        run: |
+          cd artifacts
+          zip -r ../binaries.zip .
+
+      - name: Delete old release/tag if exists
+        run: |
+          gh release delete latest -y || true
+          git push origin :refs/tags/latest || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create new release
+        run: |
+          gh release create latest binaries.zip \
+            --title "Latest Build" \
+            --notes "Automated build from ${{ github.sha }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
