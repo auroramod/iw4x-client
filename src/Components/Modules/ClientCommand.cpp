@@ -267,7 +267,7 @@ namespace Components
 
 			if (!strcmp(weapon, "all"))
 			{
-				for (auto weapon_index = 1; weapon_index < Game::BG_GetNumWeapons(); ++weapon_index)
+				for (auto weapon_index = 1u; weapon_index < Game::BG_GetNumWeapons(); ++weapon_index)
 				{
 					Game::BG_TakePlayerWeapon(&ent->client->ps, weapon_index);
 				}

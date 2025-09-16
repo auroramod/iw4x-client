@@ -722,7 +722,7 @@ namespace Components
 
 			// for (size_t i = 0; i < ARRAYSIZE(context->menuStack); i++)
 			// uses openMenuCount now, which is probably wrong... a fix would be nice :D
-			for (size_t i = 0; i < context->openMenuCount; i++)
+			for (auto i = 0; i < context->openMenuCount; ++i)
 			{
 				if (context->menuStack[i] &&
 					context->menuStack[i]->window.name == name)
@@ -1603,7 +1603,7 @@ namespace Components
 			this should ONLY BE USED for pure convenience. 
 
 		*/
-		Command::Add("reloadmenus", [](const Command::Params* params)
+		Command::Add("reloadmenus", [](const Command::Params*)
 		{
 			is_quick_reload = true;
 			ReloadDiskMenus();
