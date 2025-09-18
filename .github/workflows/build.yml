@@ -56,18 +56,30 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
-      - name: Checkout files
+      - name: Check out files
         uses: actions/checkout@v4
         
-      - name: Download all artifacts
+      - name: Download Debug artifacts
         uses: actions/download-artifact@v4
         with:
-          path: artifacts
+          name: Debug
+          path: Debug
 
-      - name: Zip binaries
+      - name: Download Release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: Release
+          path: Release
+
+      - name: Zip Debug binaries
         run: |
-          cd artifacts
-          zip -r ../binaries.zip .
+          cd Debug
+          zip -r ../"Debug binaries.zip" .
+
+      - name: Zip Release binaries
+        run: |
+          cd Release
+          zip -r ../"Release binaries.zip" .
 
       - name: Delete old release/tag if exists
         run: |
@@ -78,8 +90,8 @@ jobs:
 
       - name: Create new release
         run: |
-          gh release create latest binaries.zip \
-            --title "Latest Build" \
+          gh release create latest "Debug binaries.zip" "Release binaries.zip" \
+            --title "Latest" \
             --notes "Automated build from ${{ github.sha }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
