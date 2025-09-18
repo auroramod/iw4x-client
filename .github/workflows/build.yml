@@ -62,13 +62,13 @@ jobs:
       - name: Download Debug artifacts
         uses: actions/download-artifact@v4
         with:
-          name: Debug
+          name: Debug binaries
           path: Debug
 
       - name: Download Release artifacts
         uses: actions/download-artifact@v4
         with:
-          name: Release
+          name: Release binaries
           path: Release
 
       - name: Zip Debug binaries
