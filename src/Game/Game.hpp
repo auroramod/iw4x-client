@@ -70,6 +70,8 @@ namespace Game
 
 	extern const char* origErrorMsg;
 
+	extern HWND* hWnd;
+
 	extern const char** g_assetNames;
 
 	extern XModel* G_GetModel(int index);

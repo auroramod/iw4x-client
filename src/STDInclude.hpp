@@ -68,6 +68,12 @@
 #include <CommCtrl.h>
 #pragma comment(lib, "Comctl32.lib")
 
+#include <imgui.h>
+#include <imgui_internal.h>
+#include <backends/imgui_impl_dx9.h>
+#include <backends/imgui_impl_win32.h>
+#include <misc/cpp/imgui_stdlib.h>
+
 // Ignore the warnings
 #pragma warning(push)
 #pragma warning(disable: 4100)

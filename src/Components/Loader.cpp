@@ -73,6 +73,9 @@
 
 #include "Modules/BotLib/lPrecomp.hpp"
 
+#include "Modules/GUI.hpp"
+#include "Modules/GUI/AssetList.hpp"
+
 namespace Components
 {
 	bool Loader::Pregame = true;
@@ -194,6 +197,10 @@ namespace Components
 		Register(new GSC::GSC());
 
 		Register(new BotLib::lPrecomp());
+
+		// GUI
+		Register(new GUI());
+		Register(new AssetList());
 
 		Pregame = false;
 

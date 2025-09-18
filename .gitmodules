@@ -47,3 +47,6 @@
 [submodule "deps/dualsense-windows"]
 	path = deps/dualsense-windows
 	url = https://github.com/Ohjurot/DualSense-Windows.git
+[submodule "deps/imgui"]
+	path = deps/imgui
+	url = https://github.com/alicealys/imgui

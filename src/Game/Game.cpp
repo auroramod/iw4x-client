@@ -32,6 +32,8 @@ namespace Game
 
 	const char* origErrorMsg = reinterpret_cast<const char*>(0x79B124);
 
+	HWND* hWnd = reinterpret_cast<HWND*>(0x64A3AD0);
+
 	XModel* G_GetModel(const int index)
 	{
 		assert(index > 0);

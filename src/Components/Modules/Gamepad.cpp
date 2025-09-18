@@ -2,6 +2,8 @@
 #include "RawMouse.hpp"
 #include "Window.hpp"
 
+#include "GUI.hpp"
+
 namespace Components
 {
 	Game::ButtonToCodeMap_t Gamepad::buttonList[]
@@ -1796,6 +1798,11 @@ namespace Components
 		// A keyboard key has been pressed. Mark controller as unused.
 		gamePads[localClientNum].inUse = false;
 		gpad_in_use.setRaw(false);
+
+		if (!GUI::KeyPressed(localClientNum, key, down))
+		{
+			return;
+		}
 
 		// Call original function
 		Utils::Hook::Call<void(int, int, int, unsigned)>(0x4F6480)(localClientNum, key, down, time);
