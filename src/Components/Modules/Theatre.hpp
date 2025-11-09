@@ -35,7 +35,7 @@ namespace Components
 		static int BaselineSnapshotMsgOff;
 
 		static void WriteBaseline();
-		static void StoreBaseline(PBYTE snapshotMsg);
+		static void StoreBaseline(Game::msg_t* snapshotMsg);
 
 		static void LoadDemos([[maybe_unused]] const UIScript::Token& token, [[maybe_unused]] const Game::uiInfo_s* info);
 		static void DeleteDemo([[maybe_unused]] const UIScript::Token& token, [[maybe_unused]] const Game::uiInfo_s* info);
@@ -44,6 +44,7 @@ namespace Components
 		static unsigned int GetDemoCount();
 		static const char* GetDemoText(unsigned int item, int column);
 		static void SelectDemo(unsigned int index);
+		static bool AdjustTimeDelta();
 
 		static void GamestateWriteStub(Game::msg_t* msg, char byte);
 		static void RecordGamestateStub();

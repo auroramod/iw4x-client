@@ -13,6 +13,7 @@
 #include <rapidjson/document.h>
 #include <rapidjson/prettywriter.h>
 #include <rapidjson/stringbuffer.h>
+#include <version.hpp>
 
 namespace Components
 {
@@ -34,6 +35,7 @@ namespace Components
 	Dvar::Var ServerList::UIServerSelectedMap;
 	Dvar::Var ServerList::NETServerQueryLimit;
 	Dvar::Var ServerList::NETServerFrames;
+	Dvar::Var ServerList::NETServerDeadTimeout;
 
 	std::vector<ServerList::ServerInfo>* ServerList::GetList()
 	{
@@ -208,12 +210,7 @@ namespace Components
 		}
 		else
 		{
-			list->clear();
-
 			std::lock_guard _(RefreshContainer.mutex);
-
-			RefreshContainer.sendCount = 0;
-			RefreshContainer.sentCount = 0;
 
 			for (const auto& server : tempList)
 			{
@@ -224,7 +221,10 @@ namespace Components
 
 	void ServerList::RefreshVisibleList([[maybe_unused]] const UIScript::Token& token, [[maybe_unused]] const Game::uiInfo_s* info)
 	{
-		RefreshVisibleListInternal(UIScript::Token(), info);
+		Scheduler::Once([info] ()
+		{
+			RefreshVisibleListInternal(UIScript::Token (), info);
+		}, Scheduler::Pipeline::CLIENT);
 	}
 
 	void ServerList::RefreshVisibleListInternal([[maybe_unused]] const UIScript::Token& token, [[maybe_unused]] const Game::uiInfo_s* info, bool refresh)
@@ -358,15 +358,23 @@ namespace Components
 		Dvar::Var("ui_serverSelected").set(false);
 
 		auto* list = GetList();
-		if (list) list->clear();
 
-		VisibleList.clear();
+		const bool hasCachedServers = list && !list->empty ();
+
+		if (!hasCachedServers)
+			VisibleList.clear ();
 
 		{
 			std::lock_guard _(RefreshContainer.mutex);
 			RefreshContainer.servers.clear();
-			RefreshContainer.sendCount = 0;
-			RefreshContainer.sentCount = 0;
+
+			// Record that the visible set must be rebuilt after the first discovery
+			// pass when starting without a cache. Note that in this situation the
+			// browser has no prior ordering or selection state, so the initial
+			// snapshot must drive the first stable view.
+			//
+			if (!hasCachedServers && IsOnlineList ())
+				RefreshContainer.needsInitialRefresh = true;
 		}
 
 		if (IsOfflineList())
@@ -375,32 +383,53 @@ namespace Components
 		}
 		else if (IsOnlineList())
 		{
+			// Warms the list early and lets the first discovery cycle reconcile
+			// cached state with the actual network view.
+			//
+			if (hasCachedServers && list)
+			{
+				for (const auto& server : *list)
+				{
+					InsertRequest(server.addr);
+				}
+			}
+
 			const auto masterPort = (*Game::com_masterPort)->current.unsignedInt;
 			const auto* masterServerName = (*Game::com_masterServerName)->current.string;
 
-			RefreshContainer.awatingList = true;
+			RefreshContainer.awaitingList = true;
 			RefreshContainer.awaitTime = Game::Sys_Milliseconds();
 
-			Toast::Show("cardicon_headshot", "Server Browser", "Fetching servers...", 3000);
-
-			const auto host = "master.iw4x.io";
-			const auto url = std::format("http://{}/v1/servers/iw4x?protocol={}", host, PROTOCOL);
-			const auto reply = Utils::WebIO("IW4x", url).setTimeout(5000)->get();
-
-			if (reply.empty())
+			if (!hasCachedServers)
 			{
-				Logger::Print("Respone from {} was empty or the request timed out, falling back to node system.\n", url);
-				Toast::Show("cardicon_headshot", "^1Error", std::format("Could not get a response from {}, falling back to node system.\n", url), 5000);
-				UseMasterServer = false;
-				return;
+				Toast::Show("cardicon_headshot", "Server Browser", "Fetching servers...", 3000);
 			}
 
-			RefreshContainer.awatingList = false;
+			std::thread([masterServerName, masterPort]()
+			{
+				const auto host = "master.iw4x.io";
+				const auto url = std::format("http://{}/v1/servers/iw4x?protocol={}", host, PROTOCOL);
+				const auto reply = Utils::WebIO("IW4x", url).setTimeout(5000)->get();
 
-			ParseNewMasterServerResponse(reply);
+				Scheduler::Once([reply, masterServerName, masterPort, url]()
+				{
+					{
+						std::lock_guard _(RefreshContainer.mutex);
+						RefreshContainer.awaitingList = false;
+					}
 
-			// TODO: Figure out what to do with this. Leave it to avoid breaking other code
-			RefreshContainer.host = Network::Address(std::format("{}:{}", masterServerName, masterPort));
+					if (reply.empty())
+					{
+						Logger::Print("Response from {} was empty or the request timed out, falling back to node system.\n", url);
+						Toast::Show("cardicon_headshot", "^1Error", std::format("Could not get a response from {}, falling back to node system.\n", url), 5000);
+						UseMasterServer = false;
+						return;
+					}
+
+					ParseNewMasterServerResponse(reply);
+					RefreshContainer.host = Network::Address(std::format("{}:{}", masterServerName, masterPort));
+				}, Scheduler::Pipeline::CLIENT);
+			}).detach();
 		}
 		else if (IsFavouriteList())
 		{
@@ -495,7 +524,10 @@ namespace Components
 		auto* list = GetList();
 		if (list) list->clear();
 
-		RefreshVisibleListInternal(UIScript::Token(), nullptr);
+		Scheduler::Once([] ()
+		{
+			RefreshVisibleListInternal(UIScript::Token (), nullptr);
+		}, Scheduler::Pipeline::CLIENT);
 	}
 
 	void ServerList::LoadFavourties()
@@ -540,18 +572,259 @@ namespace Components
 		}
 	}
 
+	void ServerList::LoadServerCache()
+	{
+		if (!IsOnlineList())
+			return;
+
+		std::string cache (Utils::IO::ReadFile (ServerCacheFile));
+		if (cache.empty ())
+			return;
+
+		nlohmann::json root;
+		try
+		{
+			root = nlohmann::json::parse (cache);
+		}
+		catch (const nlohmann::json::parse_error& e)
+		{
+			Logger::PrintError(Game::CON_CHANNEL_ERROR,
+												"JSON parse error in server cache: {}\n",
+												e.what());
+
+			// Treat malformed cache data as non-fatal. The cache is simply ignored
+			// and a fresh list will be constructed via the normal discovery path.
+			//
+			return;
+		}
+
+		if (!root.is_object () ||
+				!root.contains ("servers") ||
+				!root["servers"].is_array ())
+		{
+			Logger::Print ("server cache file is invalid\n");
+
+			// non-fatal. (see above)
+			//
+			return;
+		}
+
+		const auto& servers = root["servers"];
+		auto* list = GetList();
+		if (list == nullptr)
+			return;
+
+		Logger::Print ("loading {} cached servers...\n", servers.size ());
+
+		for (const nlohmann::json& entry : servers)
+		{
+			if (!entry.is_object ())
+				continue;
+
+			try
+			{
+				ServerInfo s;
+
+				s.addr          = Network::Address (entry.value ("address", ""));
+				s.hostname      = entry.value ("hostname", "");
+				s.mapname       = entry.value ("mapname", "");
+				s.gametype      = entry.value ("gametype", "");
+				s.mod           = entry.value ("mod", "");
+				s.version       = entry.value ("version", "");
+				s.clients       = entry.value ("clients", 0);
+				s.bots          = entry.value ("bots", 0);
+				s.maxClients    = entry.value ("maxClients", 0);
+				s.password      = entry.value ("password", false);
+				s.ping          = entry.value ("ping", 999);
+				s.matchType     = entry.value ("matchType", 0);
+				s.securityLevel = entry.value ("securityLevel", 0);
+				s.protocol      = entry.value ("protocol", PROTOCOL);
+				s.hardcore      = entry.value ("hardcore", false);
+				s.svRunning     = entry.value ("svRunning", false);
+				s.aimassist     = entry.value ("aimassist", false);
+				s.voice         = entry.value ("voice", false);
+				s.lastSeen      = entry.value ("lastSeen", std::time (nullptr));
+
+				std::hash<ServerInfo> h;
+				s.hash = h (s);
+
+				if (!IsServerDuplicate (list, s))
+					list->push_back (s);
+			}
+			catch (const std::exception& e)
+			{
+				Logger::PrintError (Game::CON_CHANNEL_ERROR,
+														"error loading cached server: {}\n",
+														e.what ());
+			}
+		}
+
+		// Recompute visibility after population.
+		//
+		Scheduler::Once([]()
+		{
+			RefreshVisibleListInternal(UIScript::Token(), nullptr);
+		}, Scheduler::Pipeline::CLIENT);
+
+		Logger::Print ("loaded {} servers from cache\n", list->size ());
+	}
+
+	void ServerList::SaveServerCache ()
+	{
+		if (!IsOnlineList ())
+			return;
+
+		auto* list = GetList();
+		if (list == nullptr || list->empty ())
+			return;
+
+		nlohmann::json::array_t servers;
+
+		for (const ServerInfo& s : *list)
+		{
+			nlohmann::json e;
+
+			e["address"]       = s.addr.getString ();
+			e["hostname"]      = s.hostname;
+			e["mapname"]       = s.mapname;
+			e["gametype"]      = s.gametype;
+			e["mod"]           = s.mod;
+			e["version"]       = s.version;
+			e["clients"]       = s.clients;
+			e["bots"]          = s.bots;
+			e["maxClients"]    = s.maxClients;
+			e["password"]      = s.password;
+			e["ping"]          = s.ping;
+			e["matchType"]     = s.matchType;
+			e["securityLevel"] = s.securityLevel;
+			e["protocol"]      = s.protocol;
+			e["hardcore"]      = s.hardcore;
+			e["svRunning"]     = s.svRunning;
+			e["aimassist"]     = s.aimassist;
+			e["voice"]         = s.voice;
+			e["lastSeen"]      = s.lastSeen;
+
+			servers.push_back (e);
+		}
+
+		nlohmann::json root;
+
+		root["servers"]   = servers;
+		root["timestamp"] = std::time (nullptr);
+		root["version"]   = REVISION_STR;
+
+		Utils::IO::WriteFile (ServerCacheFile, root.dump ());
+
+		// Note that ephemeral entries are not included, so the cached set may
+		// differ from the full set returned by live node queries.
+		//
+		Logger::Print ("saved {} servers to cache\n", servers.size ());
+	}
+
+	void ServerList::RemoveDeadServers ()
+	{
+		if (!IsOnlineList ())
+			return;
+
+		auto* list (GetList ());
+		if (list == nullptr || list->empty ())
+			return;
+
+		const std::time_t now (std::time (nullptr));
+		const std::time_t timeout (NETServerDeadTimeout.get<int> ());
+
+		std::size_t removed (0);
+
+		// Prune entries that have not produced a response within the configured
+		// timeout window.
+		//
+		for (auto i (list->begin ()); i != list->end (); )
+		{
+			if (now - i->lastSeen > timeout)
+			{
+				Logger::Print ("removing dead server: {} (last seen {} seconds ago)\n",
+											i->addr.getString (), now - i->lastSeen);
+
+				i = list->erase (i);
+				++removed;
+			}
+			else
+				++i;
+		}
+
+		if (removed > 0)
+		{
+			Logger::Print ("removed {} dead servers from cache\n", removed);
+
+			// Note that we do not persist the cache here. While it may appear natural
+			// to save immediately after pruning, the periodic cache-save interval is
+			// aligned with the heartbeat/dead-check cadence. In practice, removal
+			// only occurs during those cycles, which guarantees that a scheduled
+			// cache write will follow in the same frame or shortly thereafter.
+			//
+			Scheduler::Once([] ()
+			{
+				RefreshVisibleListInternal(UIScript::Token (), nullptr);
+			}, Scheduler::Pipeline::CLIENT);
+		}
+	}
+
+	void ServerList::HeartbeatServers()
+	{
+		if (!IsOnlineList ())
+			return;
+
+		auto* list (GetList ());
+		if (list == nullptr || list->empty ())
+			return;
+
+		Logger::Print ("starting heartbeat check for {} cached servers\n",
+									list->size ());
+
+		// Note that we issue getinfo requests for each cached server to refresh
+		// without requiring a full discovery sweep.
+		//
+		std::lock_guard lock (RefreshContainer.mutex);
+
+		for (const ServerInfo& s : *list)
+		{
+			bool queued (false);
+
+			for (const Container::ServerContainer& c : RefreshContainer.servers)
+			{
+				if (c.target == s.addr)
+				{
+					queued = true;
+					break;
+				}
+			}
+
+			if (!queued)
+			{
+				Container::ServerContainer c;
+				c.sent   = false;
+				c.target = s.addr;
+
+				RefreshContainer.servers.push_back (c);
+			}
+		}
+
+		Logger::Print ("queued {} servers for heartbeat ping\n",
+									 RefreshContainer.servers.size());
+	}
+
 	void ServerList::InsertRequest(Network::Address address)
 	{
 		std::lock_guard _(RefreshContainer.mutex);
 
-		Container::ServerContainer container;
-		container.sent = false;
-		container.target = address;
+		Container::ServerContainer c;
+		c.sent   = false;
+		c.target = address;
 
 		auto alreadyInserted = false;
-		for (auto& server : RefreshContainer.servers)
+		for (auto& s : RefreshContainer.servers)
 		{
-			if (server.target == container.target)
+			if (s.target == c.target)
 			{
 				alreadyInserted = true;
 				break;
@@ -559,25 +832,7 @@ namespace Components
 		}
 
 		if (!alreadyInserted)
-		{
-			RefreshContainer.servers.push_back(container);
-
-			auto* list = GetList();
-			if (list)
-			{
-				for (auto& server : *list)
-				{
-					if (server.addr == container.target)
-					{
-						--RefreshContainer.sendCount;
-						--RefreshContainer.sentCount;
-						break;
-					}
-				}
-			}
-
-			++RefreshContainer.sendCount;
-		}
+			RefreshContainer.servers.push_back(c);
 	}
 
 	void ServerList::Insert(const Network::Address& address, const Utils::InfoString& info)
@@ -620,6 +875,7 @@ namespace Components
 			server.svRunning = info.get("sv_running") == "1"s;
 			server.ping = (Game::Sys_Milliseconds() - i->sendTime);
 			server.addr = address;
+			server.lastSeen = std::time(nullptr);
 
 			std::hash<ServerInfo> hashFn;
 			server.hash = hashFn(server);
@@ -651,41 +907,43 @@ namespace Components
 			auto* list = GetList();
 			if (!list) return;
 
-			std::size_t k = 0;
-			for (auto j = list->begin(); j != list->end(); ++k)
+			bool found (false);
+			for (auto& s: *list)
 			{
-				if (j->addr == address)
+				if (s.addr == address)
 				{
-					j = list->erase(j);
-				}
-				else
-				{
-					++j;
-				}
-			}
-
-			// Also remove from visible list
-			for (auto j = VisibleList.begin(); j != VisibleList.end();)
-			{
-				if (*j == k)
-				{
-					j = VisibleList.erase(j);
-				}
-				else
-				{
-					++j;
+					// Update entry in-place to retain list position.
+					//
+					s = server;
+					found = true;
+					break;
 				}
 			}
 
 			if (info.get("gamename") == "IW4"s && server.matchType)
 			{
-				auto* lList = GetList();
-				if (lList)
+				if (auto* l = GetList (); l != nullptr)
 				{
-					if (!IsServerDuplicate(lList, server))
+					// NOTE: The visible list is not refreshed here during normal
+					// operation. Recomputing visibility on each heartbeat causes the
+					// browser to re-sort while player counts fluctuate, which makes
+					// entries appear to "jump" during normal activity.
+					//
+					// ... Well, turn out that during initial discovery, the browser is
+					// still forming its first stable view, so entries must be allowed to
+					// surface incrementally as responses arrive.
+					//
+					if (!found && !IsServerDuplicate (l, server))
 					{
-						lList->push_back(server);
-						RefreshVisibleListInternal(UIScript::Token(), nullptr);
+						l->push_back (server);
+
+						if (RefreshContainer.needsInitialRefresh)
+						{
+							Scheduler::Once([]()
+							{
+								RefreshVisibleListInternal(UIScript::Token(), nullptr);
+							}, Scheduler::Pipeline::CLIENT);
+						}
 					}
 				}
 			}
@@ -797,6 +1055,43 @@ namespace Components
 	void ServerList::Frame()
 	{
 		static Utils::Time::Interval frameLimit;
+		static Utils::Time::Interval cacheSaveInterval;
+		static Utils::Time::Interval heartbeatInterval;
+		static Utils::Time::Interval deadServerCheckInterval;
+		static bool wasOpen = false;
+
+		// Skip update processing when the browser view is inactive.
+		//
+		if (!IsServerListOpen ())
+		{
+			std::lock_guard _ (RefreshContainer.mutex);
+
+			if (!RefreshContainer.servers.empty ())
+				RefreshContainer.servers.clear ();
+
+			wasOpen = false;
+			return;
+		}
+
+		// Re-entry into the browser must clears accumulated idle time of existing
+		// entries to avoid classifying them as dead upon return.
+		//
+		//
+		if (!wasOpen)
+		{
+			wasOpen = true;
+
+			auto* l (GetList ());
+
+			if (l != nullptr && !l->empty ())
+			{
+				const auto now (std::time (nullptr));
+
+				for (auto& s: *l)
+					s.lastSeen = now;
+			}
+		}
+
 		const auto interval = static_cast<int>(1000.0f / static_cast<float>(NETServerFrames.get<int>()));
 
 		if (!frameLimit.elapsed(std::chrono::milliseconds(interval)))
@@ -806,20 +1101,57 @@ namespace Components
 
 		frameLimit.update();
 
+		// FIXME: Intervals should come from a dvar (NET...). In practice, they
+		// interacts poorly with server frame processing, so their value is kept
+		// local for now.
+
+		// Periodically send heartbeat pings to cached servers
+		//
+		if (heartbeatInterval.elapsed(std::chrono::seconds(30)))
+		{
+			heartbeatInterval.update();
+
+			if (IsOnlineList())
+				HeartbeatServers();
+		}
+
+		// Periodically check and remove dead servers
+		//
+		if (deadServerCheckInterval.elapsed(std::chrono::seconds(30)))
+		{
+			deadServerCheckInterval.update();
+
+			if (IsOnlineList())
+				RemoveDeadServers();
+		}
+
+		// Periodically write current online list to on-disk cache
+		//
+		if (cacheSaveInterval.elapsed(std::chrono::seconds(30)))
+		{
+			cacheSaveInterval.update ();
+
+			if (IsOnlineList ())
+			{
+				if (auto* list = GetList (); list != nullptr && !list->empty ())
+					SaveServerCache ();
+			}
+		}
+
 		std::lock_guard _(RefreshContainer.mutex);
 
-		if (RefreshContainer.awatingList)
+		if (RefreshContainer.awaitingList)
 		{
 			// Stop counting if we are out of the server browser menu
 			if (!IsServerListOpen())
 			{
-				RefreshContainer.awatingList = false;
+				RefreshContainer.awaitingList = false;
 			}
 
 			// Check if we haven't got a response within 5 seconds
 			if (Game::Sys_Milliseconds() - RefreshContainer.awaitTime > 5000)
 			{
-				RefreshContainer.awatingList = false;
+				RefreshContainer.awaitingList = false;
 				Logger::Print("We haven't received a response from the master within {} seconds!\n", (Game::Sys_Milliseconds() - RefreshContainer.awaitTime) / 1000);
 
 				UseMasterServer = false;
@@ -829,6 +1161,9 @@ namespace Components
 
 		const auto challenge = Utils::Cryptography::Rand::GenerateChallenge();
 		auto requestLimit = NETServerQueryLimit.get<int>();
+
+		bool hadPendingRequests = false;
+
 		for (std::size_t i = 0; i < RefreshContainer.servers.size() && requestLimit > 0; ++i)
 		{
 			auto* server = &RefreshContainer.servers[i];
@@ -837,13 +1172,29 @@ namespace Components
 			// Found server we can send a request to
 			server->sent = true;
 			requestLimit--;
+			hadPendingRequests = true;
 
 			server->sendTime = Game::Sys_Milliseconds();
 			server->challenge = challenge;
 
-			++RefreshContainer.sentCount;
-
 			Network::SendCommand(server->target, "getinfo", server->challenge);
+		}
+
+		// If the list is populated and no requests remain pending, then the
+		// discovery phase has produced a stable snapshot. That is, the flag is
+		// lowered and the on-disk cache may be written.
+		//
+		if (RefreshContainer.needsInitialRefresh && !hadPendingRequests)
+		{
+			auto* l (GetList ());
+
+			if (l != nullptr && !l->empty ())
+			{
+				RefreshContainer.needsInitialRefresh = false;
+
+				if (IsOnlineList ())
+					SaveServerCache ();
+			}
 		}
 
 		UpdateVisibleInfo();
@@ -860,7 +1211,10 @@ namespace Components
 
 		Game::Dvar_SetInt(*Game::ui_netSource, source);
 
-		RefreshVisibleListInternal(UIScript::Token(), nullptr, true);
+		Scheduler::Once([]()
+		{
+			RefreshVisibleListInternal(UIScript::Token(), nullptr);
+		}, Scheduler::Pipeline::CLIENT);
 	}
 
 	void ServerList::UpdateGameType()
@@ -874,7 +1228,10 @@ namespace Components
 
 		Game::Dvar_SetInt(*Game::ui_joinGametype, gametype);
 
-		RefreshVisibleListInternal(UIScript::Token(), nullptr);
+		Scheduler::Once([]()
+		{
+			RefreshVisibleListInternal(UIScript::Token(), nullptr);
+		}, Scheduler::Pipeline::CLIENT);
 	}
 
 	void ServerList::UpdateVisibleInfo()
@@ -942,6 +1299,8 @@ namespace Components
 					1, 10, Dedicated::IsEnabled() ? Game::DVAR_NONE : Game::DVAR_ARCHIVE, "Amount of server queries per frame");
 				NETServerFrames = Dvar::Register<int>("net_serverFrames", 30,
 					1, 60, Dedicated::IsEnabled() ? Game::DVAR_NONE : Game::DVAR_ARCHIVE, "Amount of server query frames per second");
+				NETServerDeadTimeout = Dvar::Register<int>("net_serverDeadTimeout", 60,
+					1, 604800, Dedicated::IsEnabled() ? Game::DVAR_NONE : Game::DVAR_ARCHIVE, "Seconds after which unresponsive servers are removed from cache");
 			});
 
 		// Fix ui_netsource dvar
@@ -953,7 +1312,7 @@ namespace Components
 			{
 				if (RefreshContainer.host != address) return; // Only parse from host we sent to
 
-				RefreshContainer.awatingList = false;
+				RefreshContainer.awaitingList = false;
 
 				std::lock_guard _(RefreshContainer.mutex);
 
@@ -991,8 +1350,28 @@ namespace Components
 		// Add required UIScripts
 		UIScript::Add("UpdateFilter", RefreshVisibleList);
 		UIScript::Add("RefreshFilter", UpdateVisibleList);
+		UIScript::Add("RefreshServers",
+									[](const UIScript::Token&, const Game::uiInfo_s*)
+		{
+			// Attempt to populate online list from on-disk cache before issuing a
+			// network-driven refresh.
+			//
+			if (IsOnlineList())
+			{
+				auto* list = GetList();
 
-		UIScript::Add("RefreshServers", [](const UIScript::Token&, const Game::uiInfo_s*) {
+				if (list != nullptr && list->empty())
+				{
+					std::thread([]()
+					{
+						LoadServerCache();
+						Scheduler::Once([]() { ServerList::Refresh(); }, Scheduler::Pipeline::CLIENT);
+					}).detach();
+
+					return; // defer refresh until after the cache load completes
+				}
+			}
+
 			ServerList::Refresh();
 		});
 
@@ -1081,7 +1460,7 @@ namespace Components
 	void ServerList::preDestroy()
 	{
 		std::lock_guard _(RefreshContainer.mutex);
-		RefreshContainer.awatingList = false;
+		RefreshContainer.awaitingList = false;
 		RefreshContainer.servers.clear();
 	}
 }
