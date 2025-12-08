@@ -116,11 +116,13 @@ namespace Components
 				int sendTime;
 				std::string challenge;
 				Network::Address target;
+				int sourceList;
 			};
 
 			bool awaitingList;
 			int awaitTime;
 			bool needsInitialRefresh;
+			bool loadingCache;
 
 			Network::Address host;
 			std::vector<ServerContainer> servers;

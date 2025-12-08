@@ -17,6 +17,9 @@ namespace Components
 		static void SetAspectRatio_Stub();
 		static void SetAspectRatio();
 
+		static void CL_InitRef_Hk(Game::GfxConfiguration* config);
+		static void R_EnumDisplayModes_Hk(unsigned int adapterIndex);
+
 		static Game::dvar_t* g_antilag;
 		static void ClientEventsFireWeapon_Stub();
 		static void ClientEventsFireWeaponMelee_Stub();

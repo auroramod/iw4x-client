@@ -141,7 +141,7 @@ namespace Components
 		__asm
 		{
 			cmp eax, 4;
-			ja goToDefaultCase;
+			ja goToDefaultCase;	
 			je useCustomRatio;
 
 			// execute switch statement code
@@ -297,6 +297,79 @@ namespace Components
 		return Game::Dvar_RegisterBool(dvarName, value_, flags, description);
 	}
 
+	void QuickPatch::CL_InitRef_Hk(Game::GfxConfiguration* config)
+	{
+		// CL_InitRef() creates a GfxConfiguration with defaultFullscreen = true,
+		// which r_fullscreen inherits as the default value. We override the field
+		// here to force windowed startup on first launch.
+		config->defaultFullscreen = false;
+
+		// Call original R_ConfigureRenderer()
+		return Utils::Hook::Call<void(Game::GfxConfiguration* config)>(0x508040)(config);
+	}
+
+	void QuickPatch::R_EnumDisplayModes_Hk(unsigned int adapterIndex)
+	{
+		// Call original R_EnumDisplayModes() to let it register and save available display modes in r_mode
+		Utils::Hook::Call<void(unsigned int adapterIndex)>(0x506F10)(adapterIndex);
+
+		if (Dvar::Var("g_firstLaunch").get<bool>() == false)
+		{
+			return;
+		}
+
+		if (!(*Game::d3d9))
+		{
+			return;
+		}
+
+		// Get the resolution of the monitor that will be used for the game
+		HMONITOR adapterMonitor = (*Game::d3d9)->GetAdapterMonitor(adapterIndex);
+		MONITORINFO mi{};
+		mi.cbSize = sizeof(MONITORINFO);
+
+		if (!GetMonitorInfoA(adapterMonitor, &mi))
+		{
+			return;
+		}
+
+		const int monitor_width  = mi.rcMonitor.right  - mi.rcMonitor.left;
+		const int monitor_height = mi.rcMonitor.bottom - mi.rcMonitor.top;
+
+		Game::dvar_t* r_mode = Game::Dvar_FindVar("r_mode");
+
+		if (!r_mode || !r_mode->domain.enumeration.strings || r_mode->domain.enumeration.stringCount <= 0)
+		{
+			return;
+		}
+
+		int mode_index  = r_mode->current.integer;
+		int mode_width  = 0;
+		int mode_height = 0;
+
+		for (int i = 0; i < r_mode->domain.enumeration.stringCount; i++)
+		{
+			const char* mode = r_mode->domain.enumeration.strings[i];
+
+			if (std::sscanf(mode, "%ix%i", &mode_width, &mode_height) == 2)
+			{
+				if (mode_width == monitor_width && mode_height == monitor_height)
+				{
+					mode_index = i;
+					break;
+				}
+			}
+		}
+
+		Game::Dvar_SetInt(r_mode, mode_index);
+
+		// Move the window to the top-left corner for a fullscreen-like appearance
+		Game::dvar_t* vid_xpos = Game::Dvar_FindVar("vid_xpos");
+		Game::dvar_t* vid_ypos = Game::Dvar_FindVar("vid_ypos");
+		if (vid_xpos) Game::Dvar_SetInt(vid_xpos, 0);
+		if (vid_ypos) Game::Dvar_SetInt(vid_ypos, 0);
+	}
+
 	QuickPatch::QuickPatch()
 	{
 		// Filtering any mapents that is intended for Spec:Ops gamemode (CODO) and prevent them from spawning
@@ -315,6 +388,10 @@ namespace Components
 		// Add ultrawide support
 		Utils::Hook(0x51B13B, QuickPatch::Dvar_RegisterAspectRatioDvar, HOOK_CALL).install()->quick();
 		Utils::Hook(0x5063F3, QuickPatch::SetAspectRatio_Stub, HOOK_JUMP).install()->quick();
+
+		// Disable fullscreen mode on first launch
+		Utils::Hook(0x4A6B14, QuickPatch::CL_InitRef_Hk, HOOK_CALL).install()->quick();
+		Utils::Hook(0x507443, QuickPatch::R_EnumDisplayModes_Hk, HOOK_CALL).install()->quick();
 
 		Utils::Hook(0x4FA448, QuickPatch::Dvar_RegisterConMinicon, HOOK_CALL).install()->quick();
 
