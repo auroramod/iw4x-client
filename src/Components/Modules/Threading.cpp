@@ -4,55 +4,70 @@ namespace Components
 {
 	namespace FrameTime
 	{
-		void NetSleep(int ms)
+		// Accumulate the fractional milliseconds lost to integer division (e.g., 85
+		// FPS is 11.76ms, but engine gives us 11ms). Once it crosses the 1ms
+		// threshold, we'll nudge the next frame's wait.
+		//
+		static double res (0.0);
+
+		void NetSleep(int n)
 		{
-			if (ms < 0) ms = 0;
+			if (n < 0)
+				n = 0;
 
-			fd_set fdr;
-			FD_ZERO(&fdr);
+			fd_set fs;
+			FD_ZERO(&fs);
 
-			auto maxfd = INVALID_SOCKET;
-			if (*Game::ip_socket != INVALID_SOCKET)
+			// Check if there is actually a socket to listen on before we bother with
+			// select().
+			//
+			auto s (*Game::ip_socket);
+			auto m (INVALID_SOCKET);
+
+			if (s != INVALID_SOCKET)
 			{
-				FD_SET(*Game::ip_socket, &fdr);
-				maxfd = *Game::ip_socket;
+				FD_SET(s, &fs);
+				m = s;
 			}
 
-			if (maxfd == INVALID_SOCKET)
+			// Windows select() is notoriously finicky and fails if there are no
+			// sockets in the set. If we are ~~maiden~~socket-less, just fall back to
+			// a vanilla system sleep.
+			//
+			if (m == INVALID_SOCKET)
 			{
-				// On Windows, select fails if no sockets
-				Game::Sys_Sleep(ms);
+				Game::Sys_Sleep(n);
 				return;
 			}
 
-			timeval tv = { ms / 1000, (ms % 1000) * 1000 };
-			const auto result = ::select(maxfd + 1, &fdr, nullptr, nullptr, &tv);
+			timeval tv {n / 1000, (n % 1000) * 1000};
+			auto r (::select(m + 1, &fs, nullptr, nullptr, &tv));
 
-			if (result == SOCKET_ERROR)
+			if (r == SOCKET_ERROR)
 			{
 				Logger::Warning(Game::CON_CHANNEL_SYSTEM, "WinAPI: select failed: {}\n", Game::NET_ErrorString());
 				return;
 			}
 
-			if (result > 0)
+			// If we caught some activity, process packets immediately to stay
+			// responsive instead of waiting for the next cycle.
+			//
+			if (r > 0)
 			{
 				if (Dedicated::IsRunning())
-				{
 					Game::Com_ServerPacketEvent();
-				}
 				else
-				{
 					Game::Com_ClientPacketEvent();
-				}
 			}
 		}
 
 		void SVFrameWaitFunc()
 		{
+			// Yield if we still have a significant chunk of time left in the server's
+			// time residual.
+			//
 			if (*Game::sv_timeResidual < 50)
-			{
 				NetSleep(50 - *Game::sv_timeResidual);
-			}
 		}
 
 		void __declspec(naked) SVFrameWaitStub()
@@ -68,25 +83,79 @@ namespace Components
 			}
 		}
 
-		int ComTimeVal(int minMsec)
+		int ComTimeVal(int m)
 		{
-			const auto timeVal = Game::Sys_Milliseconds() - *Game::com_frameTime;
-			return (timeVal >= minMsec ? 0 : minMsec - timeVal);
+			auto d (Game::Sys_Milliseconds() - *Game::com_frameTime);
+			return (d >= m ? 0 : m - d);
 		}
 
-		int ComFrameWait(int minMsec)
+		int ComFrameWait(int m)
 		{
-			do
-			{
-				const auto timeVal = ComTimeVal(minMsec);
-				NetSleep(timeVal < 1 ? 0 : timeVal - 1);
-			} while (ComTimeVal(minMsec));
+			static Dvar::Var v ("com_maxfps");
+			auto f (v.get<int>());
+			auto t (0);
 
-			const auto lastTime = *Game::com_frameTime;
+			// 'm' is usually 1000/fps. At 85 FPS this is 11ms which is actually ~90
+			// FPS. We recalculate using floats and track the drift so we don't
+			// consistently run too fast.
+			//
+			if (f > 0)
+			{
+				// Use integer division for the base. That is, for exact caps like 250
+				// (1000/250 = 4), we never want to accidentally truncate to 3 due to
+				// floating point.
+				//
+				auto b (1000 / f);
+				auto i (1000.0 / f);
+
+				res += (i - b);
+
+				// Swallow the accumulated drift once it hits 1ms. We use a while-loop
+				// here just in case some massive lag spike means we have multiple
+				// milliseconds to "repay" to the clock.
+				//
+				while (res >= 1.0f)
+				{
+					b += 1;
+					res -= 1.0f;
+				}
+				t = *Game::com_frameTime + b;
+			}
+			else
+			{
+				// For uncapped FPS, we don't care about the drift and just want to get
+				// back to work as soon as possible. (wait time is effectively 0)
+				//
+				t = *Game::com_frameTime + m;
+			}
+
+			// Select/Sleep resolution is often too coarse (>1ms) to hit high targets
+			// like 250 FPS reliably. To solve this, we sleep for the bulk of the time
+			// but spin for the final 2ms to wake up exactly when we need to.
+			//
+			for (;;)
+			{
+				auto n (Game::Sys_Milliseconds());
+				auto r (t - n);
+
+				if (r <= 0)
+					break;
+
+				// Give up the timeslice if we have a comfortable margin, otherwise
+				// spin-wait with NetSleep(0) to keep processing packets while we burn
+				// the remaining time.
+				//
+				if (r > 2)
+					NetSleep(r - 2);
+				else
+					NetSleep(0);
+			}
+
+			auto l (*Game::com_frameTime);
 			Game::Com_EventLoop();
 			*Game::com_frameTime = Game::Sys_Milliseconds();
 
-			return *Game::com_frameTime - lastTime;
+			return (*Game::com_frameTime - l);
 		}
 
 		void __declspec(naked) ComFrameWaitStub()
@@ -141,22 +210,33 @@ namespace Components
 
 	Threading::Threading()
 	{
-		// remove starting of server thread from Com_Init_Try_Block_Function
-		Utils::Hook::Nop(0x60BEC0, 5);
+		// Force the OS scheduler to 1ms so our hybrid sleep/spin logic doesn't get
+		// stuck in 15ms "quantum" naps.
+		//
+		timeBeginPeriod(1);
 
-		// make server thread function jump to per-frame stuff
+		// Stop the engine from spawning its own server thread so we can maintain
+		// control over the threading model ourselves.
+		//
+		Utils::Hook::Nop(0x60BEC0, 5);
 		Utils::Hook(0x627049, 0x6271CE, HOOK_JUMP).install()->quick();
 
-		// make SV_WaitServer insta-return
+		// Disable the blocking server wait so we can drive the cycle.
+		//
 		Utils::Hook::Set<std::uint8_t>(0x4256F0, 0xC3);
 
-		// dvar setting function, unknown stuff related to server thread sync
+		// This dvar sync logic is known to conflict with our manual threading
+		// approach, so we'll just bypass it.
+		//
 		Utils::Hook::Set<std::uint8_t>(0x647781, 0xEB);
 
 		Utils::Hook(0x627695, 0x627040, HOOK_CALL).install()->quick();
 		Utils::Hook(0x43D1C7, PacketEventStub, HOOK_JUMP).install()->quick();
 		Utils::Hook(0x6272E3, FrameEpilogueStub, HOOK_JUMP).install()->quick();
 
+		// Hijack the appropriate waiter based on whether we are running a dedicated
+		// server or a client.
+		//
 		if (Dedicated::IsEnabled())
 		{
 			Utils::Hook(0x4BAAAD, FrameTime::SVFrameWaitStub, HOOK_CALL).install()->quick();

@@ -33,8 +33,6 @@ namespace Components
 
 		ServerList();
 
-		void preDestroy() override;
-
 		static void Refresh();
 		static void RefreshVisibleList([[maybe_unused]] const UIScript::Token& token, [[maybe_unused]] const Game::uiInfo_s* info);
 		static void RefreshVisibleListInternal([[maybe_unused]] const UIScript::Token& token, [[maybe_unused]] const Game::uiInfo_s* info, bool refresh = false);
@@ -62,6 +60,7 @@ namespace Components
 		static Dvar::Var NETServerQueryLimit;
 		static Dvar::Var NETServerFrames;
 		static Dvar::Var NETServerDeadTimeout;
+		static Dvar::Var UIBrowserEnableFilters;
 
 	private:
 		enum class Column : int
@@ -82,6 +81,9 @@ namespace Components
 
 		static constexpr auto* FavouriteFile = "players/favourites.json";
 		static constexpr auto* ServerCacheFile = "players/server_cache.json";
+		static constexpr auto* FiltersFile = "players/iw4x_filters.json";
+
+		static std::vector<std::string> HostnameFilters;
 
 #pragma pack(push, 1)
 		union MasterEntry
@@ -144,6 +146,11 @@ namespace Components
 		static void LoadFavourties();
 		static void StoreFavourite(const std::string& server);
 		static void RemoveFavourite(const std::string& server);
+
+		static void CreateDefaultFiltersFile();
+		static void LoadFilters();
+		static std::string NormalizeHostname(const std::string& hostname);
+		static bool IsHostnameFiltered(const std::string& hostname);
 
 		static void LoadServerCache();
 		static void SaveServerCache();
