@@ -10,13 +10,14 @@ To learn more about IW4x itself, [check the original IW4x repository out.](https
 
 To learn more about Aurora IW4x's fork or have any requests or questions, you can join [the Aurora discord here.](https://discord.gg/6pSNTjtTCG)
 
-## New features with Aurora
+## New features & fixes
 
 - Re-added old `reloadmenus` command *(technically unstable, but benefits modders for convenience of .menu modding)*
 - Check if zone exists before running `loadzone`
 - Added `take` command
 - Added `give ammo` command, which fills up all weapons' ammo
 - Added `listassetpool` command
+- Fixed map entities overriding not checking the right file
 
 ### Planned for the future
 - IMGUI for exploring asset pools, limits, etc.

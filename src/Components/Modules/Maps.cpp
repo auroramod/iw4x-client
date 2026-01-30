@@ -190,17 +190,17 @@ namespace Components
 	void Maps::OverrideMapEnts(Game::MapEnts* ents)
 	{
 		auto callback = [](Game::XAssetHeader header, void* ents)
-			{
-				Game::MapEnts* mapEnts = reinterpret_cast<Game::MapEnts*>(ents);
-				Game::clipMap_t* clipMap = header.clipMap;
+		{
+			Game::MapEnts* mapEnts = reinterpret_cast<Game::MapEnts*>(ents);
+			Game::clipMap_t* clipMap = header.clipMap;
 
-				if (clipMap && mapEnts && !_stricmp(mapEnts->name, clipMap->name))
-				{
-					clipMap->mapEnts = mapEnts;
-					//*Game::marMapEntsPtr = mapEnts;
-					//Game::G_SpawnEntitiesFromString();
-				}
-			};
+			if (clipMap && mapEnts && !_stricmp(mapEnts->name, clipMap->name))
+			{
+				clipMap->mapEnts = mapEnts;
+				//*Game::marMapEntsPtr = mapEnts;
+				//Game::G_SpawnEntitiesFromString();
+			}
+		};
 
 		// Internal doesn't lock the thread, as locking is impossible, due to executing this in the thread that holds the current lock
 		Game::DB_EnumXAssets_Internal(Game::XAssetType::ASSET_TYPE_CLIPMAP_MP, callback, ents, true);
@@ -257,10 +257,13 @@ namespace Components
 				Utils::IO::WriteFile(Utils::String::VA("raw/%s.ents", name.data()), asset.mapEnts->entityString, true);
 			}
 
+			const auto d3dbsp_name = Utils::String::VA("maps/mp/%s.d3dbsp.ents", Dvar::Var("mapname").get<const char*>());
+
 			static std::string mapEntities;
-			FileSystem::File ents(name + ".ents", Game::FS_THREAD_DATABASE);
+			FileSystem::File ents(d3dbsp_name, Game::FS_THREAD_DATABASE);
 			if (ents.exists())
 			{
+				printf("[LoadAssetRestrict] using override map entities \"%s\"\n", d3dbsp_name);
 				mapEntities = ents.getBuffer();
 				asset.mapEnts->entityString = mapEntities.data();
 				asset.mapEnts->numEntityChars = mapEntities.size() + 1;

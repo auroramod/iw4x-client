@@ -370,7 +370,7 @@ namespace Components
 
 		return [callback]() {
 			AssetHandler::RestrictSignal.disconnect(callback);
-			};
+		};
 	}
 
 	void AssetHandler::ClearRelocations()
