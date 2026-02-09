@@ -70,6 +70,7 @@
 #include "Modules/Vote.hpp"
 #include "Modules/Weapon.hpp"
 #include "Modules/Window.hpp"
+#include "Modules/Sound.hpp"
 
 #include "Modules/BotLib/lPrecomp.hpp"
 
@@ -163,6 +164,7 @@ namespace Components
 		Register(new ServerList());
 		Register(new Session());
 		Register(new SlowMotion());
+		Register(new Sound());
 		Register(new StartupMessages());
 		Register(new Stats());
 		Register(new StringTable());
