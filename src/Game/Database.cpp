@@ -33,6 +33,8 @@ namespace Game
 
 	FastCriticalSection* db_hashCritSect = reinterpret_cast<FastCriticalSection*>(0x16B8A54);
 
+	unsigned int* g_zoneCount = reinterpret_cast<unsigned int*>(0x1261BCC);
+
 	XZone* g_zones = reinterpret_cast<XZone*>(0x14C0F80);
 	unsigned short* db_hashTable = reinterpret_cast<unsigned short*>(0x12412B0);
 

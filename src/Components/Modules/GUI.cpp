@@ -3,7 +3,14 @@
 #include "Window.hpp"
 
 #ifdef _DEBUG
+
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+typedef long(__stdcall* EndScene)(LPDIRECT3DDEVICE9);
+EndScene oEndScene = NULL;
+
+WNDPROC oWndProc;
+static HWND window = NULL;
 
 namespace Components
 {
@@ -17,6 +24,36 @@ namespace Components
 
 	static std::unordered_map<std::string, bool> enabled_menus{};
 	static std::vector<GUI::menu_t> menus{};
+
+	namespace
+	{
+		LRESULT __stdcall WndProc(const HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+
+			if (true && ImGui_ImplWin32_WndProcHandler(hWnd, uMsg, wParam, lParam))
+				return true;
+
+			return CallWindowProc(oWndProc, hWnd, uMsg, wParam, lParam);
+		}
+
+		BOOL CALLBACK EnumWindowsCallback(HWND handle, LPARAM lParam)
+		{
+			DWORD wndProcId;
+			GetWindowThreadProcessId(handle, &wndProcId);
+
+			if (GetCurrentProcessId() != wndProcId)
+				return TRUE; // skip to next window
+
+			window = handle;
+			return FALSE; // window found abort search
+		}
+
+		HWND GetProcessWindow()
+		{
+			window = NULL;
+			EnumWindows(EnumWindowsCallback, NULL);
+			return window;
+		}
+	}
 
 	void GUI::RunFrameCallbacks()
 	{
@@ -66,6 +103,7 @@ namespace Components
 		return &enabled_menus[name];
 	}
 
+	/*
 	void GUI::RunEventQueue()
 	{
 		event_queue.access([](std::vector<Event>& queue)
@@ -77,6 +115,7 @@ namespace Components
 			queue.clear();
 		});
 	}
+	*/
 
 	void GUI::NewGUIFrame()
 	{
@@ -84,7 +123,6 @@ namespace Components
 
 		ImGui_ImplDX9_NewFrame();
 		ImGui_ImplWin32_NewFrame();
-		RunEventQueue();
 		ImGui::NewFrame();
 	}
 
@@ -120,7 +158,7 @@ namespace Components
 	}
 
 	// callback
-	bool GUI::KeyPressed(const int localClientNum, const int key, const int down)
+	bool GUI::KeyEvent(const int localClientNum, const int key, const int down)
 	{
 		if (key == Game::K_F11 && down)
 		{
@@ -134,7 +172,12 @@ namespace Components
 			return false;
 		}
 
-		return Toggled == false;
+		return !Toggled;
+	}
+
+	bool GUI::IsOpen()
+	{
+		return !Toggled;
 	}
 
 	void GUI::SetupGlobals()
@@ -172,27 +215,16 @@ namespace Components
 		else
 		{
 			NewGUIFrame();
-			//RunFrameCallbacks();
-
-			if (ImGui::BeginMainMenuBar())
-			{
-				ImGui::Text("Main menu bar is drawing");
-				if (ImGui::BeginMenu("Windows"))
-				{
-					ImGui::Text("Windows menu is drawing");
-					ImGui::EndMenu();
-				}
-				ImGui::EndMainMenuBar();
-			}
-			else
-			{
-				ImGui::Begin("Fallback Test");
-				ImGui::Text("BeginMainMenuBar() returned false");
-				ImGui::End();
-			}
-
+			RunFrameCallbacks();
 			EndGUIFrame();
 		}
+	}
+
+	long __stdcall GUI::hkEndScene(LPDIRECT3DDEVICE9 pDevice)
+	{
+		OnFrame();
+
+		return oEndScene(pDevice);
 	}
 
 	LRESULT GUI::WndProcStub(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -255,14 +287,36 @@ namespace Components
 
 	GUI::GUI()
 	{
-		Utils::Hook(0x536B59, RB_Frame_Stub, HOOK_JUMP).install()->quick();
+		//Utils::Hook(0x536B59, RB_Frame_Stub, HOOK_JUMP).install()->quick();
+
+		static bool attached = false;
+		Scheduler::Loop([&]
+		{
+			if (!attached)
+			{
+				auto result = kiero::init(kiero::RenderType::D3D9);
+
+				printf("[GUI] kiero result is %s\n", kiero::status_to_str(result).c_str());
+
+				if (result == kiero::Status::Success)
+				{
+					attached = true;
+
+					kiero::bind(42, (void**)&oEndScene, hkEndScene);
+					do
+						window = GetProcessWindow();
+					while (window == NULL);
+					oWndProc = (WNDPROC)SetWindowLongPtr(window, GWL_WNDPROC, (LONG_PTR)WndProc);
+				}
+			}
+		}, Scheduler::Pipeline::MAIN);
 
 		Utils::Hook(0x507BD5, sub_5078C0_Stub, HOOK_CALL).install()->quick();
 
 		RegisterCallback([]
 		{
 			DrawMainMenuBar();
-		}, true);
+		}, false);
 
 		// change wndproc
 		//Utils::Hook(0x64D270, Win_RegisterClass_Stub, HOOK_JUMP).install()->quick();

@@ -12,10 +12,11 @@ To learn more about IW4x itself, [check out iw4x-client here.](https://github.co
 ## New features & fixes
 
 - Re-added old `reloadmenus` command *(technically unstable, but benefits modders for convenience of .menu modding)*
-- Check if zone exists before running `loadzone`
+- Check if zone exists before running `loadzone` command
 - Added `take` command
 - Added `give ammo` command, which fills up all weapons' ammo
 - Added `listassetpool` command
+- Added *[Dear ImGui](https://github.com/ocornut/imgui)* with various menus ***(F11 to toggle)***
 - Fixed map entities overriding not checking the right file
 - Removed client-side filtering of "bad" server names
 

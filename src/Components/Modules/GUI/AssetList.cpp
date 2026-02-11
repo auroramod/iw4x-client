@@ -27,6 +27,46 @@ namespace Components
 
 			return *b_ == '\0';
 		}
+
+		// clipboard utils, kinda duplicated but wtv
+		std::string get_clipboard_data()
+		{
+			if (OpenClipboard(nullptr))
+			{
+				std::string data;
+
+				auto* const clipboard_data = GetClipboardData(1u);
+				if (clipboard_data)
+				{
+					auto* const cliptext = static_cast<char*>(GlobalLock(clipboard_data));
+					if (cliptext)
+					{
+						data.append(cliptext);
+						GlobalUnlock(clipboard_data);
+					}
+				}
+				CloseClipboard();
+
+				return data;
+			}
+			return {};
+		}
+
+		void set_clipboard_data(const std::string& text)
+		{
+			const auto len = text.size() + 1;
+			const auto mem = GlobalAlloc(GMEM_MOVEABLE, len);
+
+			memcpy(GlobalLock(mem), text.data(), len);
+			GlobalUnlock(mem);
+
+			if (OpenClipboard(nullptr))
+			{
+				EmptyClipboard();
+				SetClipboardData(CF_TEXT, mem);
+				CloseClipboard();
+			}
+		}
 	}
 
 	bool shown_assets[Game::XAssetType::ASSET_TYPE_COUNT]{};
@@ -129,8 +169,7 @@ namespace Components
 			ImGui::TableSetColumnIndex(col_index++);
 			if (entry->zoneIndex > 0)
 			{
-				// fastfiles::get_zone_name((int)entry->zoneIndex)
-				ImGui::Text("TODO: zone name");
+				ImGui::Text(Game::g_zones[entry->zoneIndex].name);
 			}
 			else
 			{
@@ -142,8 +181,7 @@ namespace Components
 
 		if (ImGui::Button(asset_name))
 		{
-			// TODO: clipboard
-			//gui::copy_to_clipboard(asset_name);
+			set_clipboard_data(asset_name);
 		}
 
 		if (type == Game::ASSET_TYPE_LOCALIZE_ENTRY)
@@ -152,8 +190,7 @@ namespace Components
 
 			if (ImGui::Button(entry->asset.header.localize->value))
 			{
-				// TODO: clipboard
-				//gui::copy_to_clipboard(entry->asset.header.localize->value);
+				set_clipboard_data(entry->asset.header.localize->value);
 			}
 		}
 	}
@@ -162,13 +199,12 @@ namespace Components
 	{
 		if (ImGui::TreeNode("loaded zones"))
 		{
-			for (int i = 0; i < 32; ++i)
+			for (auto i = 1u; i <= *Game::g_zoneCount; i++)
 			{
 				const auto name = Game::g_zones[i].name;
 				if (ImGui::Button(name))
 				{
-					// TODO: clipboard
-					//gui::copy_to_clipboard(name);
+					set_clipboard_data(name);
 				}
 			}
 
@@ -203,16 +239,14 @@ namespace Components
 			ImGui::InputText("value", &assets_value_filter[type]);
 		}
 
-		/*
 		if (ImGui::InputText("zone name", &zone_name_filter[type]))
 		{
 			for (auto zone = 0u; zone <= *Game::g_zoneCount; zone++)
 			{
-				const auto zone_name = fastfiles::get_zone_name(zone);
+				const auto zone_name = Game::g_zones[zone].name;
 				disabled_zones[type][zone] = !strstr_lower(zone_name, zone_name_filter[type].data());
 			}
 		}
-		*/
 
 		ImGui::Checkbox("default assets only", &default_only[type]);
 	}

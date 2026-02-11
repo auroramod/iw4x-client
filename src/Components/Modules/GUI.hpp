@@ -36,7 +36,10 @@ namespace Components
 
 		GUI();
 
-		static bool KeyPressed(const int localClientNum, const int key, const int down);
+		static bool KeyEvent(const int localClientNum, const int key, const int down);
+
+		static bool IsOpen();
+
 		static void RegisterCallback(const std::function<void()>& callback, bool always = false);
 		static void RegisterMenu(const std::string& name, const std::string& title, const std::function<void()>& callback,
 			const bool always = false);
@@ -58,6 +61,7 @@ namespace Components
 
 		static void SetupGlobals();
 
+		static long __stdcall hkEndScene(LPDIRECT3DDEVICE9 pDevice);
 		static LRESULT WndProcStub(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 		static void sub_5078C0_Stub();

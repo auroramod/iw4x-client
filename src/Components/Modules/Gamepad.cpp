@@ -1641,6 +1641,11 @@ namespace Components
 
 	void Gamepad::IN_Frame_Hk()
 	{
+		if (!GUI::IsOpen()) // if false, it is open
+		{
+			return;
+		}
+
 		RawMouse::IN_MouseMove();
 
 		IN_GamePadsMove();
@@ -1993,10 +1998,12 @@ namespace Components
 		gamePads[localClientNum].inUse = false;
 		gpad_in_use.setRaw(false);
 
-		if (!GUI::KeyPressed(localClientNum, key, down))
+#ifdef _DEBUG
+		if (!GUI::KeyEvent(localClientNum, key, down))
 		{
 			return;
 		}
+#endif
 
 		// Call original function
 		Utils::Hook::Call<void(int, int, int, unsigned)>(0x4F6480)(localClientNum, key, down, time);

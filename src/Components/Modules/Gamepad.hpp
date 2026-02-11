@@ -197,6 +197,7 @@ namespace Components
 		static void Key_GetCommandAssignmentInternal_Stub();
 		static void Key_SetBinding_Hk(int localClientNum, int keyNum, const char* binding);
 		static void CL_KeyEvent_Hk(const int localClientNum, const int key, const int down, const unsigned time);
+		static void CL_CharEvent_Hk(const int localClientNum, const int key);
 		static int CL_MouseEvent_Hk(int x, int y, int dx, int dy);
 		static bool UI_RefreshViewport_Hk();
 

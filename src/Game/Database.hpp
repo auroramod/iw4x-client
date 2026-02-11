@@ -102,6 +102,8 @@ namespace Game
 
 	extern FastCriticalSection* db_hashCritSect;
 
+	extern unsigned int* g_zoneCount;
+
 	extern XZone* g_zones;
 	extern unsigned short* db_hashTable;
 
