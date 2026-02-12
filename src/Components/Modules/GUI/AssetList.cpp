@@ -1,5 +1,3 @@
-#ifdef _DEBUG
-
 #include "AssetList.hpp"
 
 namespace Components
@@ -327,5 +325,3 @@ namespace Components
 		ImGui::End();
 	}
 }
-
-#endif

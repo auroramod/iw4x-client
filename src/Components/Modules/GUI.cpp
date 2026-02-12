@@ -2,8 +2,6 @@
 
 #include "Window.hpp"
 
-#ifdef _DEBUG
-
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 typedef long(__stdcall* EndScene)(LPDIRECT3DDEVICE9);
@@ -35,7 +33,7 @@ namespace Components
 			return CallWindowProc(oWndProc, hWnd, uMsg, wParam, lParam);
 		}
 
-		BOOL CALLBACK EnumWindowsCallback(HWND handle, LPARAM lParam)
+		BOOL CALLBACK EnumWindowsCallback(HWND handle, [[maybe_unused]] LPARAM lParam)
 		{
 			DWORD wndProcId;
 			GetWindowThreadProcessId(handle, &wndProcId);
@@ -158,7 +156,7 @@ namespace Components
 	}
 
 	// callback
-	bool GUI::KeyEvent(const int localClientNum, const int key, const int down)
+	bool GUI::KeyEvent([[maybe_unused]] const int localClientNum, const int key, const int down)
 	{
 		if (key == Game::K_F11 && down)
 		{
@@ -324,4 +322,3 @@ namespace Components
 		//Utils::Hook(0x5074D3, CreateDevice_Stub, HOOK_CALL).install()->quick();
 	}
 }
-#endif

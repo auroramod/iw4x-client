@@ -55,7 +55,7 @@ std::string kiero::status_to_str(kiero::Status::Enum status)
 		return "MODULE NOT FOUND";
 	case -4:
 		return "ALREADY INITIALIZED";
-	case 5:
+	case -5:
 	default:
 		return "NOT INITIALIZED";
 	}
